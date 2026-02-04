@@ -1,5 +1,5 @@
 name = "xtraclass-web"
-pages_build_output_dir = "dist"
+pages_build_output_dir = "build/client"
 compatibility_date = "2024-12-16"
 
 # Environment variables for frontend
