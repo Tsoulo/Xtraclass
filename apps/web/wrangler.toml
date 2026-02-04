@@ -1,9 +1,12 @@
 name = "xtraclass-web"
-pages_build_output_dir = "build/client"
 compatibility_date = "2024-12-16"
 
 [build]
 command = "npm run build"
+
+# Static assets configuration for Cloudflare Pages
+[assets]
+directory = "build/client"
 
 # Environment variables for frontend
 [env.development]
