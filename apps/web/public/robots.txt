@@ -1,0 +1,17 @@
+# robots.txt for XtraClass.ai
+
+User-agent: *
+Allow: /
+
+# Important pages
+Allow: /home
+Allow: /signin
+Allow: /about
+Allow: /privacy
+Allow: /terms
+
+# Sitemap location
+Sitemap: https://xtraclass.ai/sitemap.xml
+
+# Crawl delay (optional - helps prevent server overload)
+Crawl-delay: 1

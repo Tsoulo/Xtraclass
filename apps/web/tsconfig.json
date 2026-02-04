@@ -10,7 +10,9 @@
     "rootDirs": [".", "./.react-router/types"],
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@shared/schema": ["../packages/schema"],
+      "@shared/*": ["../packages/*"]
     },
     "esModuleInterop": true,
     "verbatimModuleSyntax": true,

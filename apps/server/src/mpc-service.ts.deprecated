@@ -1,0 +1,638 @@
+// Educational AI Service for LLM Integration
+// Handles exercise generation, feedback, question marking, and homework generation using OpenAI API
+
+interface OpenAIResponse {
+  choices: Array<{
+    message: {
+      content: string;
+    };
+  }>;
+}
+
+export interface EducationalContext {
+  grade: string;
+  subject: string;
+  topic: string;
+  theme?: string;
+  difficulty: 'easy' | 'medium' | 'hard';
+  syllabus: 'CAPS' | 'IEB';
+  term?: string;
+  week?: string;
+}
+
+export interface GeneratedExercise {
+  id: string;
+  title: string;
+  description: string;
+  questions: Array<{
+    id: string;
+    question: string;
+    answer: string;
+    marks: number;
+    type: 'multiple-choice' | 'short-answer' | 'calculation' | 'essay';
+    answerType?: string;
+    acceptableVariations?: string[];
+  }>;
+  totalMarks: number;
+  estimatedDuration: number; // in minutes
+}
+
+export interface ExerciseFeedback {
+  overall: {
+    score: number;
+    percentage: number;
+    grade: string;
+    strengths: string[];
+    improvements: string[];
+  };
+  questionFeedback: Array<{
+    questionId: string;
+    isCorrect: boolean;
+    score: number;
+    maxScore: number;
+    feedback: string;
+    suggestions?: string[];
+  }>;
+  nextSteps: string[];
+}
+
+export interface HomeworkTask {
+  id: string;
+  title: string;
+  description: string;
+  dueDate: Date;
+  questions: Array<{
+    id: string;
+    question: string;
+    correctAnswer: string;
+    points: number;
+    answerType?: string;
+    acceptableVariations?: string[];
+  }>;
+  totalPoints: number;
+  estimatedTime: number; // in minutes
+}
+
+export class EducationalAIService {
+  private model: string = 'gpt-3.5-turbo'; // Using GPT-3.5-turbo for cost efficiency
+  private apiUrl: string = 'https://api.openai.com/v1/chat/completions';
+  private maxTokens: number = 1000;
+
+  constructor() {
+    console.log('✅ Educational AI Service initialized with OpenAI GPT-3.5-turbo');
+  }
+
+  private async callOpenAI(prompt: string): Promise<string> {
+    console.log('🤖 Calling OpenAI GPT-3.5-turbo with prompt length:', prompt.length);
+    console.log('🔍 API Key available:', !!process.env.OPENAI_API_KEY);
+    
+    try {
+      if (!process.env.OPENAI_API_KEY) {
+        throw new Error('AI service unavailable: Missing OPENAI_API_KEY. Please add your OpenAI API key to environment variables.');
+      }
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
+      };
+      
+      const response = await fetch(this.apiUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          model: this.model,
+          messages: [
+            {
+              role: "user",
+              content: prompt
+            }
+          ],
+          max_tokens: this.maxTokens,
+          temperature: 0.7
+        })
+      });
+
+      console.log('🌐 API Response status:', response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.log('❌ API Error response:', errorText);
+        throw new Error(`HTTP ${response.status}: ${response.statusText} - ${errorText}`);
+      }
+
+      const result: OpenAIResponse = await response.json();
+      const generatedText = result.choices[0]?.message?.content?.trim();
+      
+      console.log('✅ AI Response received, length:', generatedText?.length || 0);
+      console.log('📝 AI Response preview:', generatedText?.substring(0, 200) + '...');
+      
+      if (!generatedText || generatedText.includes('[List') || generatedText.includes('[Write') || generatedText === 'No response generated' || generatedText.length < 50) {
+        console.log('❌ AI returned incomplete/placeholder response');
+        console.log('🔍 Problematic response:', generatedText);
+        throw new Error('AI service returned incomplete response. Please check API configuration.');
+      }
+      
+      return generatedText;
+    } catch (error) {
+      console.error('❌ Error calling OpenAI model:', error);
+      throw new Error(`AI service error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+
+  /**
+   * Generate practice exercises based on educational context
+   */
+  async generateExercise(context: EducationalContext, numQuestions: number = 5, adaptiveContext?: {
+    specificImprovements?: string[];
+    performanceLevel?: number;
+    originalMistakes?: string[];
+  }): Promise<GeneratedExercise> {
+    const prompt = `
+You are an expert ${context.subject} teacher creating exercises for Grade ${context.grade} students following the ${context.syllabus} curriculum.
+
+Context:
+- Grade: ${context.grade}
+- Subject: ${context.subject}
+- Topic: ${context.topic}
+${context.theme ? `- Theme: ${context.theme}` : ''}
+- Difficulty: ${context.difficulty}
+- Syllabus: ${context.syllabus}
+${context.term ? `- Term: ${context.term}` : ''}
+${context.week ? `- Week: ${context.week}` : ''}
+
+${adaptiveContext ? `
+ADAPTIVE CONTEXT - Student Performance Analysis:
+- Performance Level: ${adaptiveContext.performanceLevel}%
+- Specific Areas Needing Improvement:
+${adaptiveContext.specificImprovements?.map(improvement => `  • ${improvement}`).join('\n') || ''}
+
+${adaptiveContext.originalMistakes?.length ? `
+Student's Recent Mistakes to Address:
+${adaptiveContext.originalMistakes.map(mistake => `  • ${mistake}`).join('\n')}
+` : ''}
+
+IMPORTANT: Create questions that specifically target these improvement areas. Focus on the exact concepts and skills the student struggled with.
+All questions must be aligned with the ${context.syllabus} curriculum for Grade ${context.grade} ${context.subject} - ${context.topic}.
+` : ''}
+
+Generate ${numQuestions} practice questions with the following format:
+
+TITLE: [Exercise Title]
+DESCRIPTION: [Brief description of what students will practice]
+
+QUESTION 1:
+[Question text]
+ANSWER: [Correct answer]
+MARKS: [Number of marks]
+TYPE: [multiple-choice/short-answer/calculation/essay]
+
+QUESTION 2:
+[Continue for all questions...]
+
+TOTAL_MARKS: [Sum of all marks]
+DURATION: [Estimated time in minutes]
+
+Make sure questions are:
+1. Strictly aligned with ${context.syllabus} curriculum requirements for Grade ${context.grade}
+2. Appropriate for Grade ${context.grade} level in ${context.subject}
+3. At ${context.difficulty} difficulty level
+4. Focused specifically on ${context.topic}${context.theme ? ` - ${context.theme}` : ''}
+5. Progressive in difficulty within the exercise
+6. Following ${context.syllabus} syllabus standards and terminology${adaptiveContext ? `
+7. Addressing the specific student weaknesses identified in the adaptive context` : ''}
+`;
+
+    try {
+      const response = await this.callOpenAI(prompt);
+      return this.parseExerciseResponse(response);
+    } catch (error) {
+      console.error('Failed to generate exercise:', error);
+      throw new Error(`AI exercise generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Provide automated feedback on completed exercises
+   */
+  async generateFeedback(
+    exercise: GeneratedExercise,
+    studentAnswers: Array<{ questionId: string; answer: string }>,
+    context: EducationalContext
+  ): Promise<ExerciseFeedback> {
+    const questionsWithAnswers = exercise.questions.map(q => {
+      const studentAnswer = studentAnswers.find(a => a.questionId === q.id);
+      return {
+        ...q,
+        studentAnswer: studentAnswer?.answer || 'No answer provided'
+      };
+    });
+
+    const prompt = `You are an expert ${context.subject} teacher providing detailed feedback on a Grade ${context.grade} exercise.
+
+Exercise Context:
+- Subject: ${context.subject}
+- Topic: ${context.topic}
+- Grade: ${context.grade}
+- Difficulty: ${context.difficulty}
+
+Questions and Student Answers:
+${questionsWithAnswers.map((q, index) => `
+QUESTION ${index + 1} (${q.marks} marks):
+${q.question}
+CORRECT ANSWER: ${q.answer}
+STUDENT ANSWER: ${q.studentAnswer}
+`).join('\n')}
+
+IMPORTANT: Replace ALL bracketed placeholders with actual content. Do not return any text in square brackets.
+
+Provide comprehensive feedback in this exact format:
+
+OVERALL_SCORE: ${questionsWithAnswers.reduce((sum, q) => sum + (q.studentAnswer === q.answer ? q.marks : 0), 0)}/${questionsWithAnswers.reduce((sum, q) => sum + q.marks, 0)}
+OVERALL_PERCENTAGE: ${Math.round((questionsWithAnswers.reduce((sum, q) => sum + (q.studentAnswer === q.answer ? q.marks : 0), 0) / questionsWithAnswers.reduce((sum, q) => sum + q.marks, 0)) * 100)}
+OVERALL_GRADE: ${(() => {
+  const percentage = Math.round((questionsWithAnswers.reduce((sum, q) => sum + (q.studentAnswer === q.answer ? q.marks : 0), 0) / questionsWithAnswers.reduce((sum, q) => sum + q.marks, 0)) * 100);
+  return percentage >= 80 ? 'A' : percentage >= 70 ? 'B' : percentage >= 60 ? 'C' : percentage >= 50 ? 'D' : 'F';
+})()}
+
+STRENGTHS:
+- Write specific strengths you observe in the student's work
+- Mention correct answers and good mathematical reasoning
+- Highlight proper use of formulas or concepts
+
+IMPROVEMENTS:
+- Identify specific calculation errors (e.g., "Added 3 + 4 = 8 instead of 7")
+- Point out conceptual misunderstandings (e.g., "Confused multiplication with addition")
+- Mention incorrect formula applications (e.g., "Used a² + b² = (a+b)² instead of a² + b² = c²")
+- Specify algebraic manipulation errors (e.g., "Moved -5 to the right side as +5 instead of -5")
+- Note sign errors, order of operations mistakes, or unit conversion errors
+- Be precise about what step went wrong and what the correct step should be
+
+${questionsWithAnswers.map((q, index) => `
+Q${index + 1}_CORRECT: ${q.studentAnswer.trim().toLowerCase() === q.answer.trim().toLowerCase() ? 'true' : 'false'}
+Q${index + 1}_SCORE: ${q.studentAnswer.trim().toLowerCase() === q.answer.trim().toLowerCase() ? q.marks : 0}/${q.marks}
+Q${index + 1}_FEEDBACK: Analyze this answer step-by-step. If incorrect, identify exactly which calculation, concept, or method was wrong. If correct, explain why it's right.
+Q${index + 1}_SUGGESTIONS: Provide specific actionable suggestions (e.g., "Review how to isolate variables by doing the same operation to both sides" or "Practice identifying like terms before combining")
+`).join('')}
+
+NEXT_STEPS:
+- Write specific recommendations for further learning
+- Suggest specific practice areas based on mistakes
+- Recommend specific resources or topics to review
+
+Remember: Replace ALL bracketed text with actual personalized content. Be encouraging but honest.`;
+
+    try {
+      console.log('🎯 Generating feedback for exercise with context:', context.subject, context.grade, context.topic);
+      console.log('📊 Questions count:', exercise.questions.length);
+      console.log('👤 Student answers:', studentAnswers.length);
+      
+      const response = await this.callOpenAI(prompt);
+      
+      console.log('✅ Raw feedback response length:', response.length);
+      console.log('📝 Response preview:', response.substring(0, 300));
+      
+      return this.parseFeedbackResponse(response, exercise);
+    } catch (error) {
+      console.error('Failed to generate feedback:', error);
+      throw new Error(`AI feedback generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Automatically evaluate and mark student responses
+   */
+  async markQuestions(
+    questions: Array<{ id: string; question: string; correctAnswer: string; studentAnswer: string; marks: number }>,
+    context: EducationalContext
+  ): Promise<Array<{ questionId: string; score: number; maxScore: number; isCorrect: boolean; feedback: string }>> {
+    const prompt = `
+You are an expert ${context.subject} teacher marking Grade ${context.grade} questions.
+
+Mark each question fairly and provide brief feedback. Consider partial credit for calculations and explanations.
+
+Questions to mark:
+${questions.map((q, index) => `
+QUESTION ${index + 1} (${q.marks} marks):
+${q.question}
+CORRECT ANSWER: ${q.correctAnswer}
+STUDENT ANSWER: ${q.studentAnswer}
+`).join('\n')}
+
+For each question, respond in this format:
+Q1_SCORE: [marks awarded]/[total marks]
+Q1_CORRECT: [true/false]
+Q1_FEEDBACK: [Brief feedback explaining the marking]
+
+${questions.map((_, index) => `Q${index + 1}_SCORE: [marks]/[total marks]
+Q${index + 1}_CORRECT: [true/false]
+Q${index + 1}_FEEDBACK: [Brief feedback]`).join('\n')}
+
+Be fair and consistent. Award partial credit where appropriate.
+`;
+
+    try {
+      const response = await this.callOpenAI(prompt);
+      return this.parseMarkingResponse(response, questions);
+    } catch (error) {
+      console.error('Failed to mark questions:', error);
+      throw new Error(`AI marking failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Create structured homework tasks aligned with curriculum requirements
+   */
+  async generateHomework(context: EducationalContext, numQuestions: number = 8): Promise<HomeworkTask> {
+    const dueDate = new Date();
+    dueDate.setDate(dueDate.getDate() + 7); // Default to 1 week from now
+
+    const prompt = `
+You are an expert ${context.subject} teacher creating homework for Grade ${context.grade} students following the ${context.syllabus} curriculum.
+
+Context:
+- Grade: ${context.grade}
+- Subject: ${context.subject}
+- Topic: ${context.topic}
+${context.theme ? `- Theme: ${context.theme}` : ''}
+- Difficulty: ${context.difficulty}
+- Syllabus: ${context.syllabus}
+
+Create a structured homework assignment with ${numQuestions} questions that:
+1. Reinforces classroom learning
+2. Provides appropriate challenge
+3. Covers different aspects of ${context.topic}
+4. Is suitable for independent study
+5. Takes approximately 45-60 minutes to complete
+
+Format:
+TITLE: [Homework Title]
+DESCRIPTION: [Assignment description and instructions]
+
+QUESTION 1:
+[Question text]
+ANSWER: [Correct answer]
+POINTS: [Points value]
+
+QUESTION 2:
+[Continue for all questions...]
+
+TOTAL_POINTS: [Sum of all points]
+ESTIMATED_TIME: [Time in minutes]
+
+Make questions varied and engaging, suitable for homework completion.
+`;
+
+    try {
+      const response = await this.callOpenAI(prompt);
+      return this.parseHomeworkResponse(response, dueDate);
+    } catch (error) {
+      console.error('Failed to generate homework:', error);
+      throw new Error(`AI homework generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  // Helper methods to parse AI responses
+  private parseExerciseResponse(response: string): GeneratedExercise {
+    const lines = response.split('\n').filter(line => line.trim());
+    const exercise: GeneratedExercise = {
+      id: `exercise_${Date.now()}`,
+      title: 'Generated Exercise',
+      description: 'AI-generated practice exercise',
+      questions: [],
+      totalMarks: 0,
+      estimatedDuration: 30
+    };
+
+    let currentQuestion: any = null;
+    let questionCounter = 0;
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      
+      if (trimmed.startsWith('TITLE:')) {
+        exercise.title = trimmed.replace('TITLE:', '').trim();
+      } else if (trimmed.startsWith('DESCRIPTION:')) {
+        exercise.description = trimmed.replace('DESCRIPTION:', '').trim();
+      } else if (trimmed.startsWith('QUESTION ')) {
+        if (currentQuestion) {
+          exercise.questions.push(currentQuestion);
+        }
+        questionCounter++;
+        currentQuestion = {
+          id: `q${questionCounter}`,
+          question: trimmed.replace(/QUESTION \d+:/, '').trim(),
+          answer: '',
+          marks: 5,
+          type: 'short-answer'
+        };
+      } else if (trimmed.startsWith('ANSWER:') && currentQuestion) {
+        currentQuestion.answer = trimmed.replace('ANSWER:', '').trim();
+      } else if (trimmed.startsWith('MARKS:') && currentQuestion) {
+        currentQuestion.marks = parseInt(trimmed.replace('MARKS:', '').trim()) || 5;
+      } else if (trimmed.startsWith('TYPE:') && currentQuestion) {
+        currentQuestion.type = trimmed.replace('TYPE:', '').trim();
+      } else if (trimmed.startsWith('TOTAL_MARKS:')) {
+        exercise.totalMarks = parseInt(trimmed.replace('TOTAL_MARKS:', '').trim()) || 0;
+      } else if (trimmed.startsWith('DURATION:')) {
+        exercise.estimatedDuration = parseInt(trimmed.replace('DURATION:', '').trim()) || 30;
+      }
+    }
+
+    if (currentQuestion) {
+      exercise.questions.push(currentQuestion);
+    }
+
+    // Calculate total marks if not provided
+    if (exercise.totalMarks === 0) {
+      exercise.totalMarks = exercise.questions.reduce((sum, q) => sum + q.marks, 0);
+    }
+
+    return exercise;
+  }
+
+  private parseFeedbackResponse(response: string, exercise: GeneratedExercise): ExerciseFeedback {
+    const lines = response.split('\n').filter(line => line.trim());
+    const feedback: ExerciseFeedback = {
+      overall: {
+        score: 0,
+        percentage: 0,
+        grade: 'F',
+        strengths: [],
+        improvements: []
+      },
+      questionFeedback: [],
+      nextSteps: []
+    };
+
+    let inStrengths = false;
+    let inImprovements = false;
+    let inNextSteps = false;
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      
+      if (trimmed.startsWith('OVERALL_SCORE:')) {
+        const scoreMatch = trimmed.match(/(\d+)\/(\d+)/);
+        if (scoreMatch) {
+          feedback.overall.score = parseInt(scoreMatch[1]);
+        }
+      } else if (trimmed.startsWith('OVERALL_PERCENTAGE:')) {
+        feedback.overall.percentage = parseInt(trimmed.replace('OVERALL_PERCENTAGE:', '').trim()) || 0;
+      } else if (trimmed.startsWith('OVERALL_GRADE:')) {
+        feedback.overall.grade = trimmed.replace('OVERALL_GRADE:', '').trim();
+      } else if (trimmed === 'STRENGTHS:') {
+        inStrengths = true;
+        inImprovements = false;
+        inNextSteps = false;
+      } else if (trimmed === 'IMPROVEMENTS:') {
+        inStrengths = false;
+        inImprovements = true;
+        inNextSteps = false;
+      } else if (trimmed === 'NEXT_STEPS:') {
+        inStrengths = false;
+        inImprovements = false;
+        inNextSteps = true;
+      } else if (inStrengths && trimmed.startsWith('-')) {
+        feedback.overall.strengths.push(trimmed.substring(1).trim());
+      } else if (inImprovements && trimmed.startsWith('-')) {
+        feedback.overall.improvements.push(trimmed.substring(1).trim());
+      } else if (inNextSteps && trimmed.startsWith('-')) {
+        feedback.nextSteps.push(trimmed.substring(1).trim());
+      }
+      
+      // Parse question feedback
+      const qFeedbackMatch = trimmed.match(/Q(\d+)_FEEDBACK: (.+)/);
+      if (qFeedbackMatch) {
+        const qIndex = parseInt(qFeedbackMatch[1]) - 1;
+        if (qIndex < exercise.questions.length) {
+          if (!feedback.questionFeedback[qIndex]) {
+            feedback.questionFeedback[qIndex] = {
+              questionId: exercise.questions[qIndex].id,
+              isCorrect: false,
+              score: 0,
+              maxScore: exercise.questions[qIndex].marks,
+              feedback: qFeedbackMatch[2]
+            };
+          } else {
+            feedback.questionFeedback[qIndex].feedback = qFeedbackMatch[2];
+          }
+        }
+      }
+    }
+
+    return feedback;
+  }
+
+  private parseMarkingResponse(
+    response: string, 
+    questions: Array<{ id: string; question: string; correctAnswer: string; studentAnswer: string; marks: number }>
+  ): Array<{ questionId: string; score: number; maxScore: number; isCorrect: boolean; feedback: string }> {
+    const lines = response.split('\n').filter(line => line.trim());
+    const results: Array<{ questionId: string; score: number; maxScore: number; isCorrect: boolean; feedback: string }> = [];
+
+    for (let i = 0; i < questions.length; i++) {
+      const result = {
+        questionId: questions[i].id,
+        score: 0,
+        maxScore: questions[i].marks,
+        isCorrect: false,
+        feedback: 'No feedback provided'
+      };
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        const qNum = i + 1;
+        
+        if (trimmed.startsWith(`Q${qNum}_SCORE:`)) {
+          const scoreMatch = trimmed.match(/(\d+)\/(\d+)/);
+          if (scoreMatch) {
+            result.score = parseInt(scoreMatch[1]);
+            result.maxScore = parseInt(scoreMatch[2]);
+          }
+        } else if (trimmed.startsWith(`Q${qNum}_CORRECT:`)) {
+          result.isCorrect = trimmed.toLowerCase().includes('true');
+        } else if (trimmed.startsWith(`Q${qNum}_FEEDBACK:`)) {
+          result.feedback = trimmed.replace(`Q${qNum}_FEEDBACK:`, '').trim();
+        }
+      }
+
+      results.push(result);
+    }
+
+    return results;
+  }
+
+  private parseHomeworkResponse(response: string, dueDate: Date): HomeworkTask {
+    const lines = response.split('\n').filter(line => line.trim());
+    const homework: HomeworkTask = {
+      id: `homework_${Date.now()}`,
+      title: 'Generated Homework',
+      description: 'AI-generated homework assignment',
+      dueDate,
+      questions: [],
+      totalPoints: 0,
+      estimatedTime: 60
+    };
+
+    let currentQuestion: any = null;
+    let questionCounter = 0;
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      
+      if (trimmed.startsWith('TITLE:')) {
+        homework.title = trimmed.replace('TITLE:', '').trim();
+      } else if (trimmed.startsWith('DESCRIPTION:')) {
+        homework.description = trimmed.replace('DESCRIPTION:', '').trim();
+      } else if (trimmed.startsWith('QUESTION ')) {
+        if (currentQuestion) {
+          homework.questions.push(currentQuestion);
+        }
+        questionCounter++;
+        currentQuestion = {
+          id: `hw_q${questionCounter}`,
+          question: trimmed.replace(/QUESTION \d+:/, '').trim(),
+          correctAnswer: '',
+          points: 10
+        };
+      } else if (trimmed.startsWith('ANSWER:') && currentQuestion) {
+        currentQuestion.correctAnswer = trimmed.replace('ANSWER:', '').trim();
+      } else if (trimmed.startsWith('POINTS:') && currentQuestion) {
+        currentQuestion.points = parseInt(trimmed.replace('POINTS:', '').trim()) || 10;
+      } else if (trimmed.startsWith('TOTAL_POINTS:')) {
+        homework.totalPoints = parseInt(trimmed.replace('TOTAL_POINTS:', '').trim()) || 0;
+      } else if (trimmed.startsWith('ESTIMATED_TIME:')) {
+        homework.estimatedTime = parseInt(trimmed.replace('ESTIMATED_TIME:', '').trim()) || 60;
+      }
+    }
+
+    if (currentQuestion) {
+      homework.questions.push(currentQuestion);
+    }
+
+    // Calculate total points if not provided
+    if (homework.totalPoints === 0) {
+      homework.totalPoints = homework.questions.reduce((sum, q) => sum + q.points, 0);
+    }
+
+    return homework;
+  }
+
+  /**
+   * Get service configuration status
+   */
+  getStatus(): { model: string; apiConfigured: boolean; message: string } {
+    const apiConfigured = !!process.env.OPENAI_API_KEY;
+    return {
+      model: this.model,
+      apiConfigured,
+      message: apiConfigured 
+        ? 'Educational AI Service configured with OpenAI API key'
+        : 'Educational AI Service requires OPENAI_API_KEY environment variable'
+    };
+  }
+}
+
+// Export singleton instance
+export const educationalAIService = new EducationalAIService();

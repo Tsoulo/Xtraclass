@@ -1,0 +1,25 @@
+{
+  "name": "XtraClass.ai",
+  "short_name": "XtraClass",
+  "description": "Educational platform connecting parents, teachers, students, and tutors",
+  "theme_color": "#4A7C59",
+  "background_color": "#ffffff",
+  "display": "standalone",
+  "orientation": "portrait",
+  "scope": "/",
+  "start_url": "/",
+  "icons": [
+    {
+      "src": "/android-chrome-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/android-chrome-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
