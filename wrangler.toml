@@ -1,0 +1,13 @@
+name = "xtraclass-web"
+compatibility_date = "2024-12-16"
+
+# Static assets configuration for Cloudflare Pages
+[assets]
+directory = "apps/web/build/client"
+
+# Environment variables for frontend
+[env.development]
+vars = { VITE_SERVER_URL = "http://localhost:3000" }
+
+[env.production]
+vars = { VITE_SERVER_URL = "https://api.xtraclass.com" }
