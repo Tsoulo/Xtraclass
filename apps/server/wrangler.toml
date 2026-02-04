@@ -1,0 +1,28 @@
+name = "xtraclass-api"
+main = "src/index.ts"
+compatibility_date = "2024-12-16"
+compatibility_flags = ["nodejs_compat"]
+
+# Environment variables
+[env.development]
+vars = { ENVIRONMENT = "development" }
+
+[env.production]
+vars = { ENVIRONMENT = "production" }
+
+# Bindings for databases, KV, etc (add as needed)
+[[d1_databases]]
+binding = "DB"
+database_name = "xtraclass-db"
+database_id = "your-database-id"
+
+# R2 for file uploads (images, PDFs, documents)
+[[r2_buckets]]
+binding = "UPLOADS"
+bucket_name = "xtraclass-uploads"
+
+# Environment-specific settings
+[env.production.d1_databases]
+binding = "DB"
+database_name = "xtraclass-db-prod"
+database_id = "your-production-database-id"

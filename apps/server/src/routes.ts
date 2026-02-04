@@ -4,6 +4,7 @@ import crypto from "crypto";
 import { spawn } from "child_process";
 import { createRequire } from "module";
 import { storage } from "./storage";
+import { getStorage } from "./file-storage";
 import { insertUserSchema, insertChildSchema, insertTeacherSchema, insertStudentSchema, insertTutorSchema, insertTopicSchema, insertThemeSchema, insertSyllabusCalendarSchema, insertSchoolSchema, insertOrganizationSchema, insertClassSchema, insertPastPaperSchema, insertExerciseSchema, insertExerciseQuestionSchema, insertHomeworkSchema, insertQuizSchema, insertHomeworkSubmissionSchema, insertExerciseSubmissionSchema, insertAiPromptSchema } from "@shared/schema";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
@@ -116,38 +117,39 @@ async function savePdfPageImages(
   paperId: string
 ): Promise<SavedImage[]> {
   const savedImages: SavedImage[] = [];
-  const outputDir = 'uploads/question-images';
-  
-  if (!existsSync(outputDir)) {
-    mkdirSync(outputDir, { recursive: true });
-  }
+  const fileStorage = getStorage();
   
   for (let i = 0; i < pdfPageImages.length; i++) {
     const pageNum = i + 1;
     const imageId = `${paperId}_page_${pageNum}`;
     const filename = `${imageId}.png`;
-    const filepath = path.join(outputDir, filename);
     
     try {
       const base64Data = pdfPageImages[i].replace(/^data:image\/png;base64,/, '');
       const buffer = Buffer.from(base64Data, 'base64');
-      writeFileSync(filepath, buffer);
+      
+      const result = await fileStorage.uploadBase64Image(
+        `data:image/png;base64,${base64Data}`,
+        filename,
+        'uploads/question-images'
+      );
       
       savedImages.push({
         imageId,
         pageNumber: pageNum,
-        url: `/uploads/question-images/${filename}`,
-        filename
+        url: result.fileUrl,
+        filename: result.filename
       });
       
-      console.log(`💾 Saved page ${pageNum} as ${filename}`);
+      console.log(`💾 Saved page ${pageNum} as ${result.filename}`);
     } catch (error) {
       console.error(`❌ Failed to save page ${pageNum}:`, error);
     }
   }
   
-  console.log(`📁 Saved ${savedImages.length} PDF page images to ${outputDir}`);
+  console.log(`📁 Saved ${savedImages.length} PDF page images`);
   return savedImages;
+}
 }
 
 // Crop an image to a bounding box region using sharp
