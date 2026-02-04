@@ -150,7 +150,6 @@ async function savePdfPageImages(
   console.log(`📁 Saved ${savedImages.length} PDF page images`);
   return savedImages;
 }
-}
 
 // Crop an image to a bounding box region using sharp
 async function cropImageToBoundingBox(
