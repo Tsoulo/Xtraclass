@@ -9,7 +9,7 @@ command = "npm run build"
 directory = "build/client"
 
 # Environment variables for frontend
-[env.development]
+[env.preview]
 vars = { VITE_SERVER_URL = "http://localhost:3000" }
 
 [env.production]
