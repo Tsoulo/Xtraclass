@@ -1,16 +1,17 @@
-name = "xtraclass-web"
+# wrangler.toml
+name = "xtraclass"
 compatibility_date = "2024-12-16"
+
+# 2. Update the directory to the full path relative to the repo root
+# Since your build log shows: apps/web/build/client
+[assets]
+directory = "apps/web/build/client"
 
 [build]
 command = "npm run build"
 
-# Static assets configuration for Cloudflare Pages
-[assets]
-directory = "build/client"
+[env.preview.vars]
+VITE_SERVER_URL = "http://localhost:3000"
 
-# Environment variables for frontend
-[env.preview]
-vars = { VITE_SERVER_URL = "http://localhost:3000" }
-
-[env.production]
-vars = { VITE_SERVER_URL = "https://api.xtraclass.com" }
+[env.production.vars]
+VITE_SERVER_URL = "https://api.xtraclass.com"

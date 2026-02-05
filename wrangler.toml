@@ -1,4 +1,4 @@
-name = "xtraclass-web"
+name = "xtraclass"
 compatibility_date = "2024-12-16"
 pages_build_output_dir = "apps/web/build/client"
 
