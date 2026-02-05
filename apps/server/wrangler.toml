@@ -1,4 +1,4 @@
-name = "xtraclass-api"
+name = "xtraclass"
 main = "src/index.ts"
 compatibility_date = "2024-12-16"
 compatibility_flags = ["nodejs_compat"]
