@@ -1,0 +1,3 @@
+{
+  "extends": "@Xtraclass/config/tsconfig.base.json"
+}
